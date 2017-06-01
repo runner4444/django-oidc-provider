@@ -252,6 +252,31 @@ class TokenTestCase(TestCase):
         self.assertEqual(id_token['sub'], str(self.user.id))
         self.assertEqual(id_token['aud'], self.client.client_id)
 
+    @patch('oidc_provider.lib.utils.token.uuid')
+    @override_settings(OIDC_TOKEN_EXPIRE=120,
+                       OIDC_GRANT_TYPE_PASSWORD_ENABLE=True,
+                       OIDC_REFRESH_DISABLE=True)
+    def test_password_grant_no_refresh_response(self, mock_uuid):
+        test_hex = 'fake_token'
+        mock_uuid4 = Mock(spec=uuid.uuid4)
+        mock_uuid4.hex = test_hex
+        mock_uuid.uuid4.return_value = mock_uuid4
+
+        response = self._post_request(
+            post_data=self._password_grant_post_data(),
+            extras=self._password_grant_auth_header()
+        )
+
+        response_dict = json.loads(response.content.decode('utf-8'))
+        id_token = JWS().verify_compact(response_dict['id_token'].encode('utf-8'), self._get_keys())
+
+        self.assertEqual(response_dict['access_token'], 'fake_token')
+        self.assertIsNone(response_dict.get('refresh_token'))
+        self.assertEqual(response_dict['expires_in'], 120)
+        self.assertEqual(response_dict['token_type'], 'bearer')
+        self.assertEqual(id_token['sub'], str(self.user.id))
+        self.assertEqual(id_token['aud'], self.client.client_id)
+
     @override_settings(OIDC_TOKEN_EXPIRE=720)
     def test_authorization_code(self):
         """
@@ -272,6 +297,30 @@ class TokenTestCase(TestCase):
         token = Token.objects.get(user=self.user)
         self.assertEqual(response_dic['access_token'], token.access_token)
         self.assertEqual(response_dic['refresh_token'], token.refresh_token)
+        self.assertEqual(response_dic['token_type'], 'bearer')
+        self.assertEqual(response_dic['expires_in'], 720)
+        self.assertEqual(id_token['sub'], str(self.user.id))
+        self.assertEqual(id_token['aud'], self.client.client_id)
+
+    @override_settings(OIDC_TOKEN_EXPIRE=720,
+                       OIDC_REFRESH_DISABLE=True)
+    def test_authorization_code_no_refresh(self):
+        """
+        We must ensure refresh is not returned when disabled.
+        """
+        SIGKEYS = self._get_keys()
+        code = self._create_code()
+
+        post_data = self._auth_code_post_data(code=code.code)
+
+        response = self._post_request(post_data)
+        response_dic = json.loads(response.content.decode('utf-8'))
+
+        id_token = JWS().verify_compact(response_dic['id_token'].encode('utf-8'), SIGKEYS)
+
+        token = Token.objects.get(user=self.user)
+        self.assertEqual(response_dic['access_token'], token.access_token)
+        self.assertIsNone(response_dic.get('refresh_token'))
         self.assertEqual(response_dic['token_type'], 'bearer')
         self.assertEqual(response_dic['expires_in'], 720)
         self.assertEqual(id_token['sub'], str(self.user.id))
@@ -338,6 +387,17 @@ class TokenTestCase(TestCase):
         del post_data['refresh_token']
         response = self._post_request(post_data)
         self.assertIn('invalid_grant', response.content.decode('utf-8'))
+
+    @override_settings(OIDC_REFRESH_DISABLE=True)
+    def test_refresh_token_disabled(self):
+        # Retrieve refresh token
+        code = self._create_code()
+        post_data = self._refresh_token_post_data(None)
+        response = self._post_request(post_data)
+
+        response_dic1 = json.loads(response.content.decode('utf-8'))
+        self.assertIsNone(response_dic1.get("refresh_token"))
+        self.assertEqual(response_dic1.get("error"), 'unsupported_grant_type',)
 
     def test_client_redirect_url(self):
         """

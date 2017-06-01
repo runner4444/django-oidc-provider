@@ -110,6 +110,12 @@ OPTIONAL. ``bool``. Enables OpenID Connect Session Management 1.0 in your provid
 
 Default is ``False``.
 
+OIDC_REFRESH_DISABLE
+====================
+OPTIONAL. ``bool``. If enabled, the Server will never hand out refresh tokens.
+
+Default is ``False``.
+
 OIDC_UNAUTHENTICATED_SESSION_MANAGEMENT_KEY
 ===========================================
 

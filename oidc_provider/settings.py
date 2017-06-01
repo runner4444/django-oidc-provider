@@ -4,7 +4,6 @@ import string
 
 from django.conf import settings
 
-
 class DefaultSettings(object):
     required_attrs = ()
 
@@ -76,6 +75,13 @@ class DefaultSettings(object):
     def OIDC_SESSION_MANAGEMENT_ENABLE(self):
         """
         OPTIONAL. If enabled, the Server will support Session Management 1.0 specification.
+        """
+        return False
+
+    @property
+    def OIDC_REFRESH_DISABLE(self):
+        """
+        OPTIONAL. If enabled, the Server will never hand out refresh tokens.
         """
         return False
 

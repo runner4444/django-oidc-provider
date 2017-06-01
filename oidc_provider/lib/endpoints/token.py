@@ -79,6 +79,20 @@ class TokenEndpoint(object):
 
         return (client_id, client_secret)
 
+    def _create_response_dic(self, token):
+        logger.debug("CREATING A RESPONSE DIC %s", token)
+        dic = {
+            'access_token': token.access_token,
+            'token_type': 'bearer',
+            'expires_in': settings.get('OIDC_TOKEN_EXPIRE'),
+            'id_token': encode_id_token(token.id_token, token.client),
+        }
+
+        if not settings.get('OIDC_REFRESH_DISABLE'):
+            dic['refresh_token'] = token.refresh_token
+
+        return dic
+
     def validate_params(self):
         try:
             self.client = Client.objects.get(client_id=self.params['client_id'])
@@ -137,6 +151,9 @@ class TokenEndpoint(object):
             self.user = user
 
         elif self.params['grant_type'] == 'refresh_token':
+            if settings.get('OIDC_REFRESH_DISABLE'):
+                raise TokenError('unsupported_grant_type')
+
             if not self.params['refresh_token']:
                 logger.debug('[Token] Missing refresh token')
                 raise TokenError('invalid_grant')
@@ -179,13 +196,7 @@ class TokenEndpoint(object):
         token.id_token = id_token_dic
         token.save()
 
-        return {
-            'access_token': token.access_token,
-            'refresh_token': token.refresh_token,
-            'expires_in': settings.get('OIDC_TOKEN_EXPIRE'),
-            'token_type': 'bearer',
-            'id_token': encode_id_token(id_token_dic, token.client),
-        }
+        return self._create_response_dic(token)
 
     def create_code_response_dic(self):
         token = create_token(
@@ -212,15 +223,7 @@ class TokenEndpoint(object):
         # We don't need to store the code anymore.
         self.code.delete()
 
-        dic = {
-            'access_token': token.access_token,
-            'refresh_token': token.refresh_token,
-            'token_type': 'bearer',
-            'expires_in': settings.get('OIDC_TOKEN_EXPIRE'),
-            'id_token': encode_id_token(id_token_dic, token.client),
-        }
-
-        return dic
+        return self._create_response_dic(token)
 
     def create_refresh_response_dic(self):
         token = create_token(
@@ -248,15 +251,7 @@ class TokenEndpoint(object):
         # Forget the old token.
         self.token.delete()
 
-        dic = {
-            'access_token': token.access_token,
-            'refresh_token': token.refresh_token,
-            'token_type': 'bearer',
-            'expires_in': settings.get('OIDC_TOKEN_EXPIRE'),
-            'id_token': encode_id_token(id_token_dic, self.token.client),
-        }
-
-        return dic
+        return self._create_response_dic(token)
 
     @classmethod
     def response(cls, dic, status=200):
